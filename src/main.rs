@@ -16,8 +16,6 @@ fn main() {
         ("Phil", 75.00, vec![]),
         ("Quincy", 121.73, vec![]),
         ("Quincy", 106.92, vec![]),
-        ("Ruud", 253.66, vec![]),
-        ("Quincy", 180.00, vec![]),
         ("Ruud", 110.00, vec![]),
         ("Ruud", 66.65, vec![]),
         ("Ruud", 163.17, vec![]),
