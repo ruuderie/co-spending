@@ -1,90 +1,156 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
+#[macro_use] extern crate prettytable;
+use prettytable::{Table, Row, Cell};
 
+// Define an enum to represent different expense categories.
+#[derive(Eq, Hash, PartialEq, Debug, Clone)]
+enum FoodExpense {
+    Groceries,
+    Chef,
+    Restaurant,
+}
+
+#[derive(Eq, Hash, PartialEq, Debug, Clone)]
+enum ExpenseCategory {
+    Transport,
+    TransportDamange,
+    BottleService,
+    Liquor,
+    Other,
+    Backwoods,
+    Food(FoodExpense),
+    Restaurant,
+    Airbnb
+}
+// Define the Expense struct which holds information about each expense.
+#[derive(Debug)]
+struct Expense<'a> {
+    payer: &'a str,
+    amount: f64,
+    exclusions: Vec<&'a str>,
+    category: ExpenseCategory,
+    received_funds: Option<f64>,
+    to_be_paid_by: Option<&'a str>,
+}
 
 fn main() {
-    // We define a list of all people who are contributors to the expenses.
     let contributors = vec!["Colin", "Justin", "Arthur", "Quincy", "Zach", "Phil", "Terry", "Ruud", "Devontae"];
 
-    // This is our main dataset. Each tuple represents an expense: who paid (payer), how much they paid (amount), and any exclusions
-    // (people who don't need to contribute to this particular expense).
+    // Initialize a prepaid amount for food-related expenses.
+    let mut prepaid_amounts: HashMap<ExpenseCategory, f64> = HashMap::new();
+    // Assume we have a prepaid amount for food and transport, managed by Quincy
+    prepaid_amounts.insert(ExpenseCategory::Food(FoodExpense::Groceries), 820.00);
+    prepaid_amounts.insert(ExpenseCategory::Transport, 720.00);
+
+
+
     let data = vec![
-        // Here, Zach paid $259.95, and there are no exclusions, meaning everyone should contribute.
-        ("Zach", 259.95, vec![]),
-        ("Colin", 75.00, vec![]),
-        ("Terry", 75.00, vec![]),
-        ("Zach", 75.00, vec![]),
-        ("Phil", 75.00, vec![]),
-        ("Quincy", 121.73, vec![]),
-        ("Quincy", 106.92, vec![]),
-        ("Ruud", 110.00, vec![]),
-        ("Ruud", 66.65, vec![]),
-        ("Ruud", 163.17, vec![]),
-        ("Ruud", 62.82, vec![]),
-        ("Ruud", 66.55, vec![]),
-        ("Phil", 375.00, vec![]),
-        // Here, Justin paid $806, but Quincy and Ruud are excluded from contributing to this expense.
-        ("Justin", 806.00, vec!["Quincy", "Ruud"]),
+        Expense { payer: "Colin", amount: 75.00, exclusions: vec![], category: ExpenseCategory::Backwoods, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Terry", amount: 75.00, exclusions: vec![], category: ExpenseCategory::Backwoods, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Zach", amount: 75.00, exclusions: vec![], category: ExpenseCategory::Backwoods, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Phil", amount: 75.00, exclusions: vec![], category: ExpenseCategory::Backwoods, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Ruud", amount: 110.00, exclusions: vec![], category: ExpenseCategory::Liquor, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Ruud", amount: 66.65, exclusions: vec![], category: ExpenseCategory::Food(FoodExpense::Groceries), received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Ruud", amount: 163.17, exclusions: vec![], category: ExpenseCategory::Liquor, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Ruud", amount: 66.55, exclusions: vec![], category: ExpenseCategory::TransportDamange, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Phil", amount: 375.00, exclusions: vec![], category: ExpenseCategory::Food(FoodExpense::Groceries), received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Justin", amount: 806.00, exclusions: vec!["Quincy", "Ruud"], category: ExpenseCategory::Restaurant, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Zach", amount: 163.00, exclusions: vec![], category: ExpenseCategory::BottleService, received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Quincy", amount: 186.00, exclusions: vec!["Ruud"], category: ExpenseCategory::Food(FoodExpense::Restaurant), received_funds: None, to_be_paid_by: None },
+        Expense { payer: "Quincy", amount: 47.00, exclusions: vec![], category: ExpenseCategory::Airbnb, received_funds: None, to_be_paid_by: None },
     ];
+    // Initialize HashMaps for keeping track of debts and net balances.
+    let mut debts: HashMap<(&str, &str), Vec<f64>> = HashMap::new();
+    let mut net_balances: HashMap<&str, f64> = HashMap::new();
 
-    // We're creating a 'ledger' of balances, which tracks how much each person owes to every other person.
-    let mut detailed_balances: HashMap<&str, HashMap<&str, f64>> = HashMap::new();
+    // Process each expense
+    for expense in &data {
+        let received_funds = expense.received_funds.unwrap_or(0.0);
+        let mut amount_to_cover = expense.amount - received_funds;
 
-    // For every expense in our dataset:
-    for (_, &(payer, amount, ref exclusions)) in data.iter().enumerate() {
-        // Calculate how many contributors should contribute to this particular expense.
-        let num_contributors = contributors.len() - exclusions.len();
-        // Calculate how much each contributor owes for this expense.
-        let each_contributor_owes = amount / num_contributors as f64;
-
-        // For every person in our list of contributors:
-        for &contributor in &contributors {
-            // If this person is not the one who paid and they are not excluded:
-            if contributor != payer && !exclusions.contains(&contributor) {
-                // Record in the ledger that this contributor owes the payer a specific amount.
-                let entry = detailed_balances.entry(contributor).or_insert(HashMap::new());
-                *entry.entry(payer).or_insert(0.0) += each_contributor_owes;
+        if let Some(prepaid_amount) = expense.to_be_paid_by.filter(|&p| p == "Quincy").and_then(|_| prepaid_amounts.get_mut(&expense.category)) {
+            if expense.payer != "Quincy" {
+                *prepaid_amount -= amount_to_cover;
+                debts.entry((expense.payer, "Quincy")).or_insert_with(|| vec![]).push(amount_to_cover);
             }
+            continue;
         }
-    }
 
-    // Now, we'll simplify the ledger. If A owes B some amount and B owes A some amount, we'll net them off.
-    let mut simplified_balances: BTreeMap<(&str, &str), f64> = BTreeMap::new();
-
-    // For every balance in our detailed ledger:
-    for (person, owes) in &detailed_balances {
-        for (receiver, amount) in owes.iter() {
-            // Check if the opposite person owes anything.
-            if let Some(opposite_amount) = detailed_balances.get(*receiver).and_then(|m| m.get(person)) {
-                // Calculate the net amount after offsetting what they owe each other.
-                let net_amount = amount - opposite_amount;
-
-                // If there's a positive net amount, record it.
-                if net_amount > 0.0 {
-                    simplified_balances.insert((person, receiver), net_amount);
-                } else if net_amount < 0.0 {
-                    // If it's negative, it means the opposite person should be the payer. Record it accordingly.
-                    simplified_balances.insert((receiver, person), -net_amount);
+        let split_between = contributors.iter().filter(|&c| !expense.exclusions.contains(c) && *c != expense.payer).count();
+        if split_between > 0 {
+            let each_contributor_owes = amount_to_cover / split_between as f64;
+            for &contributor in &contributors {
+                if !expense.exclusions.contains(&contributor) && contributor != expense.payer {
+                    // Check if a debt between these two people already exists
+                    if let Some(debt) = debts.get_mut(&(contributor, expense.payer)) {
+                        // Add to the existing debt
+                        debt.push(each_contributor_owes);
+                    } else {
+                        // Create a new debt entry
+                        debts.insert((contributor, expense.payer), vec![each_contributor_owes]);
+                    }
                 }
-            } else if *amount > 0.0 {
-                // If there's no opposite balance, just record the amount as is.
-                simplified_balances.insert((person, receiver), *amount);
             }
         }
     }
 
-    // Now, for every simplified balance:
-    for ((debtor, creditor), _) in &simplified_balances {
-        // We'll zero out the corresponding amount in the detailed ledger, so that we don't double count.
-        if let Some(debtor_balances) = detailed_balances.get_mut(*debtor) {
-            if let Some(balance) = debtor_balances.get_mut(*creditor) {
-                *balance = 0.0;
-            }
+    // Summarize debts into a net amount owed between each pair of individuals
+    let mut net_debts: HashMap<(&str, &str), f64> = HashMap::new();
+    for (&(debtor, creditor), amounts) in debts.iter() {
+
+        let total: f64 = amounts.iter().sum();
+        *net_debts.entry((debtor, creditor)).or_insert(0.0) += total;
+        *net_balances.entry(debtor).or_insert(0.0) -= total;
+        *net_balances.entry(creditor).or_insert(0.0) += total;
+    }
+
+    // Now, for each pair of individuals, print the detailed transactions and the net amount owed
+    for ((debtor, creditor), transactions) in debts.iter() {
+        println!("{} owes {}:", debtor, creditor);
+        for amount in transactions {
+            println!("    ${:.2}", amount);
+        }
+        let total_debt: f64 = transactions.iter().sum();
+        println!("{} owes {} a total of: ${:.2}\n", debtor, creditor, total_debt);
+    }
+
+    // Print out the net amount each person should pay or receive
+    for (person, balance) in net_balances.iter() {
+        if *balance < 0.0 {
+            println!("{} should pay a total of: ${:.2}", person, -*balance);
+        } else if *balance > 0.0 {
+            println!("{} should receive a total of: ${:.2}", person, *balance);
+        }
+    }
+    // Before printing the table, sort the debt entries by debtor.
+    let mut sorted_debtors: Vec<(&str, &str)> = debts.keys().cloned().collect();
+    sorted_debtors.sort_by(|a, b| a.0.cmp(b.0));
+
+    // Initialize a pretty table.
+    let mut table = Table::new();
+    table.add_row(row!["Debtor", "Creditor", "Individual Transactions", "Total Debt"]);
+
+    // Now, for each pair of individuals in the sorted list, add the transactions and the net amount owed to the table
+    for &(debtor, creditor) in &sorted_debtors {
+        if let Some(transactions) = debts.get(&(debtor, creditor)) {
+            let transaction_details = transactions.iter()
+                .map(|amount| format!("${:.2}", amount))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let total_debt: f64 = transactions.iter().sum();
+            table.add_row(Row::new(vec![
+                Cell::new(debtor),
+                Cell::new(creditor),
+                Cell::new(&transaction_details),
+                Cell::new(&format!("${:.2}", total_debt)),
+            ]));
         }
     }
 
-    // Finally, print out the simplified balances to see who owes whom.
-    println!("Simplified Balances:");
-    for ((debtor, creditor), amount) in &simplified_balances {
-        println!("{} owes {}: ${:.2}", debtor, creditor, amount);
-    }
+    // Print the table to the console
+    table.printstd();
+
+
 }
+
